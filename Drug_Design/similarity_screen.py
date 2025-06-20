@@ -1,0 +1,73 @@
+from pathlib import Path
+import os
+
+import pandas as pd
+import matplotlib.pyplot as plt
+from rdkit import Chem, DataStructs
+from rdkit.Chem import (
+    PandasTools,
+    Draw,
+    Descriptors,
+    MACCSkeys,
+    rdFingerprintGenerator,
+)
+
+DATA =  "data"
+
+# Molecules in SMILES format
+molecule_smiles = [
+    "CC1C2C(C3C(C(=O)C(=C(C3(C(=O)C2=C(C4=C1C=CC=C4O)O)O)O)C(=O)N)N(C)C)O",
+    "CC1(C(N2C(S1)C(C2=O)NC(=O)C(C3=CC=C(C=C3)O)N)C(=O)O)C",
+    "C1=COC(=C1)CNC2=CC(=C(C=C2C(=O)O)S(=O)(=O)N)Cl",
+    "CCCCCCCCCCCC(=O)OCCOC(=O)CCCCCCCCCCC",
+    "C1NC2=CC(=C(C=C2S(=O)(=O)N1)S(=O)(=O)N)Cl",
+    "CC1=C(C(CCC1)(C)C)C=CC(=CC=CC(=CC(=O)O)C)C",
+    "CC1(C2CC3C(C(=O)C(=C(C3(C(=O)C2=C(C4=C1C=CC=C4O)O)O)O)C(=O)N)N(C)C)O",
+    "CC1C(CC(=O)C2=C1C=CC=C2O)C(=O)O",
+]
+
+# List of molecule names
+molecule_names = [
+    "Doxycycline",
+    "Amoxicilline",
+    "Furosemide",
+    "Glycol dilaurate",
+    "Hydrochlorothiazide",
+    "Isotretinoin",
+    "Tetracycline",
+    "Hemi-cycline D",
+]
+
+# # Generate DF for these molecules and add their ROMol objects
+molecules = pd.DataFrame({"smiles": molecule_smiles, "name": molecule_names})
+PandasTools.AddMoleculeColumnToFrame(molecules, smilesCol="smiles")
+PandasTools.RenderImagesInAllDataFrames(True)
+print(molecules.head(2))
+
+# img1 = Draw.MolsToGridImage(
+#     molecules["ROMol"].to_list(),
+#     molsPerRow=3,
+#     subImgSize=(450, 150),
+#     legends=molecules["name"].to_list(),
+# )
+
+# img1.save("Results/T004_image1.png")
+
+# # Calculate molecular descriptors
+molecules["molecule_weight"] = molecules.ROMol.apply(Descriptors.MolWt)
+molecules.sort_values(["molecule_weight"], ascending=False, inplace=True)
+
+print(molecules[["smiles", "name", "molecule_weight"]])
+
+# # Draw the molecules with their molecular weight
+# img2 = Draw.MolsToGridImage(
+#     molecules["ROMol"],
+#     legends=[
+#         f"{molecule['name']}: {molecule['molecule_weight']:.2f} Da"
+#         for index, molecule in molecules.iterrows()
+#     ],
+#     subImgSize=(450, 150),
+#     molsPerRow=3
+# )
+
+# img2.save("Results/T004_mol-molecular_weight.png")
