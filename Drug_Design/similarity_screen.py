@@ -86,13 +86,62 @@ molecules["maccs"] = molecules.ROMol.apply(MACCSkeys.GenMACCSKeys)
 fpg = rdFingerprintGenerator.GetMorganGenerator(radius=2, fpSize=2048)
 circular_int_fp = fpg.GetCountFingerprint(molecule)
 # print(circular_int_fp)
-print(f"Print non-zero elements:\n{circular_int_fp.GetNonzeroElements()}")
+# print(f"Print non-zero elements:\n{circular_int_fp.GetNonzeroElements()}")
 
 # generate the Morgan fingerprint as a bit vector
 circular_bit_fp = fpg.GetFingerprint(molecule)
 # print(circular_bit_fp)
 # print(f"Print top 400 fingerprint bits:\n{circular_bit_fp.ToBitString()[:400]}")
 
-# Apply Morgan fingerprints (as bit vector) for all molecules
+# Apply Morgan fingerprints (as bit vector) to all molecules
 molecules["morgan"] = molecules["ROMol"].map(fpg.GetFingerprint)
 
+# # Calculate molecular similarity
+molecule1 = molecules["ROMol"][0]
+molecule2 = molecules["ROMol"][1]
+
+maccs_fp1 = MACCSkeys.GenMACCSKeys(molecule1)
+maccs_fp2 = MACCSkeys.GenMACCSKeys(molecule2)
+
+# # Calculate the Tanimoto coefficiente between two different molecules
+# print(DataStructs.TanimotoSimilarity(maccs_fp1, maccs_fp2))
+# print(DataStructs.TanimotoSimilarity(maccs_fp1, maccs_fp1))
+
+# # ---- MACCS fingerprints: Tanimoto similarity and Dice similarity ---- # # 
+molecule_query = molecules["maccs"][0]
+molecule_list = molecules["maccs"].to_list()
+# calculate similarity values between query and list elements
+molecules["tanimoto_maccs"] = DataStructs.BulkTanimotoSimilarity(molecule_query, molecule_list)
+molecules["dice_maccs"] = DataStructs.BulkDiceSimilarity(molecule_query, molecule_list)
+
+# preview = molecules.sort_values(["tanimoto_maccs"], ascending=False).reset_index()
+# print(preview[["name", "tanimoto_maccs", "dice_maccs"]])
+
+def draw_ranked_molecules(molecules, sort_by_column):
+    molecules_sorted = molecules.sort_values([sort_by_column], ascending=False).reset_index()
+    return Draw.MolsToGridImage(
+        molecules_sorted["ROMol"],
+        legends=[
+            f"#{index+1} {molecule['name']}, similarity={molecule[sort_by_column]:.2f}"
+            for index, molecule in molecules_sorted.iterrows()
+        ],
+        molsPerRow=3,
+        subImgSize=(450, 150),
+    )
+img3 = draw_ranked_molecules(molecules, "tanimoto_maccs")
+# img3.save("Results/tanimoto_rank.png")
+
+# add tanimoto and dice similarity between the morgan fingerprint to the df
+molecule_query = molecules["morgan"][0]
+molecule_list = molecules["morgan"].to_list()
+
+molecules["tanimoto_morgan"] = DataStructs.BulkTanimotoSimilarity(molecule_query, molecule_list)
+molecules["dice_morgan"] = DataStructs.BulkDiceSimilarity(molecule_query, molecule_list)
+
+preview = molecules.sort_values(["tanimoto_morgan"], ascending=False).reset_index()
+print(preview[["name", "tanimoto_morgan", "dice_morgan", "tanimoto_maccs", "dice_maccs"]])
+
+# img4 = draw_ranked_molecules(molecules, "tanimoto_morgan")
+# img4.save("Results/tanimoto_morgan.png")
+
+# # --- compare tanimoto similarities based on morgan and maccs fingerprints --- # #
