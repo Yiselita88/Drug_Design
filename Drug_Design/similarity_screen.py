@@ -139,9 +139,129 @@ molecules["tanimoto_morgan"] = DataStructs.BulkTanimotoSimilarity(molecule_query
 molecules["dice_morgan"] = DataStructs.BulkDiceSimilarity(molecule_query, molecule_list)
 
 preview = molecules.sort_values(["tanimoto_morgan"], ascending=False).reset_index()
-print(preview[["name", "tanimoto_morgan", "dice_morgan", "tanimoto_maccs", "dice_maccs"]])
+# print(preview[["name", "tanimoto_morgan", "dice_morgan", "tanimoto_maccs", "dice_maccs"]])
 
 # img4 = draw_ranked_molecules(molecules, "tanimoto_morgan")
 # img4.save("Results/tanimoto_morgan.png")
 
-# # --- compare tanimoto similarities based on morgan and maccs fingerprints --- # #
+# # # --- compare tanimoto similarities based on morgan and maccs fingerprints --- # #
+# fig, ax = plt.subplots(figsize=(6, 6))
+# molecules.plot("tanimoto_maccs", "tanimoto_morgan", kind="scatter", ax=ax)
+# ax.plot([0, 1], [0, 1], "k--")
+# ax.set_xlabel("Tanimoto (MACCS)")
+# ax.set_ylabel("Tanimoto (Morgan)")
+
+# # Virtual screening using similarity search
+molecule_dataset = pd.read_csv("EGFR_compounds_lipinski.csv", usecols=["molecule_chembl_id", "smiles", "pIC50"])
+# print(f"Number of molecules in dataset: {len(molecule_dataset)}")
+# print(molecule_dataset.head(5))
+
+query = Chem.MolFromSmiles("COC1=C(OCCCN2CCOCC2)C=C2C(NC3=CC(Cl)=C(F)C=C3)=NC=NC2=C1")
+
+# generate MACCS and Morgan for fingerprints for the query molecule
+maccs_fp_query = MACCSkeys.GenMACCSKeys(query)
+circular_fp_query = fpg.GetCountFingerprint(query)
+
+# Generate MACCS and Morgan fingerprints for all molecules in our dataset
+PandasTools.AddMoleculeColumnToFrame(molecule_dataset, "smiles")
+circular_fp_list = molecule_dataset["ROMol"].apply(fpg.GetCountFingerprint).to_list()
+maccs_fp_list = molecule_dataset["ROMol"].apply(MACCSkeys.GenMACCSKeys).to_list()
+
+# Calculate tanimoto similarity between the query molecule and all molecules of our dataset
+molecule_dataset["tanimoto_maccs"] = DataStructs.BulkTanimotoSimilarity(maccs_fp_query, maccs_fp_list)
+molecule_dataset["tanimoto_morgan"] = DataStructs.BulkTanimotoSimilarity(circular_fp_query, circular_fp_list)
+
+# calculate Dice similarity 
+molecule_dataset["dice_maccs"] = DataStructs.BulkDiceSimilarity(maccs_fp_query, maccs_fp_list)
+molecule_dataset["dice_morgan"] = DataStructs.BulkDiceSimilarity(circular_fp_query, circular_fp_list)
+
+# print(molecule_dataset[["smiles", "tanimoto_maccs", "tanimoto_morgan", "dice_maccs", "dice_morgan"]].head(5))
+# show all columns
+# print(molecule_dataset.head(3))
+
+# fig, axes = plt.subplots(figsize=(10, 6), nrows=2, ncols=2)
+# molecule_dataset.hist(["tanimoto_maccs"], ax=axes[0, 0])
+# molecule_dataset.hist(["tanimoto_morgan"], ax=axes[0, 1])
+# molecule_dataset.hist(["dice_maccs"], ax=axes[1, 0])
+# molecule_dataset.hist(["dice_morgan"], ax=axes[1, 1])
+# axes[1, 0].set_xlabel("similarity value")
+# axes[1, 0].set_ylabel("# molecules")
+# plt.savefig("Results/tanimoto_dice_histograms.png")
+
+# fig, axes = plt.subplots(figsize=(12, 6), nrows=1, ncols=2)
+
+# molecule_dataset.plot("tanimoto_maccs", "dice_maccs", kind="scatter", ax=axes[0])
+# axes[0].plot([0, 1], [0, 1], "k--")
+# axes[0].set_xlabel("Tanimoto (MACCS)")
+# axes[0].set_ylabel("Dice (MACCS)")
+
+# molecule_dataset.plot("tanimoto_morgan", "dice_morgan", kind="scatter", ax=axes[1])
+# axes[1].plot([0, 1], [0, 1], "k--")
+# axes[1].set_xlabel("Tanimoto (Morgan)")
+# axes[1].set_ylabel("Dice (Morgan)")
+# plt.savefig("Results/fingerprints_similarity_comparison.png")
+
+# print(molecule_dataset.sort_values(["tanimoto_morgan"], ascending=False).head(3))
+
+# # # show the query and its most similar molecules alongside the molecules' bioactivities
+# top_n_molecules = 10
+# top_molecules = molecule_dataset.sort_values(["tanimoto_morgan"], ascending=False).reset_index()
+# top_molecules = top_molecules[:top_n_molecules]
+# legends = [
+#     f"#{index+1} {molecule['molecule_chembl_id']}, pIC50={molecule['pIC50']:.2f}"
+#     for index, molecule in top_molecules.iterrows()
+# ]
+# img5 = Chem.Draw.MolsToGridImage(
+#     mols=[query] + top_molecules["ROMol"].tolist(),
+#     legends=(["Gefitinib"] + legends),
+#     molsPerRow=3,
+#     subImgSize=(450, 150),
+# )
+# img5.save("Results/query+similar.png") 
+
+def get_enrichment_data(molecule, similarity_measure, pic50_cutoff):
+    # get number of molecules in data set
+    molecules_all = len(molecules)
+
+    # get number of active molecules in data set
+    actives_all = sum(molecules["pIC50"] >= pic50_cutoff) 
+    
+    # Initialize a list that will hold the counter for actives and molecules while iterating through our dataset
+    actives_counter_list = []
+
+    # Initialize counter for actives
+    actives_counter = 0
+
+    # sort molecules by selected similarity measure
+    molecules.sort_values([similarity_measure], ascending=False, inplace=True)
+
+    for value in molecules["pIC50"]:
+        if value >= pic50_cutoff:
+            actives_counter += 1
+        actives_counter_list.append(actives_counter)
+
+    molecules_percentage_list = [i / molecules_all for i in actives_counter_list]
+
+    actives_percentage_list = [i / actives_all for i in actives_counter_list]
+
+    enrichment = pd.DataFrame(
+        {
+            "% ranked dataset": molecules_percentage_list,
+            "% true actives identified": actives_percentage_list
+        }
+    )
+
+    return enrichment
+
+pic50_cutoff = 6.3
+    
+
+# # get enrichement for MACCS and Morgan fingerprints
+similarity_measures = ["tanimoto_maccs", "tanimoto_morgan"]
+enrichment_data = {
+    similarity_measures: get_enrichment_data(molecule_dataset, similarity_measure, pic50_cutoff)
+    for similarity_measure in similarity_measures
+}
+
+# # example of enrichment data
+print(enrichment_data["tanimoto_maccs"].head())
